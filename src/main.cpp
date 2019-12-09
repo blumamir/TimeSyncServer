@@ -45,7 +45,6 @@ int main(int argc, char **argv) {
   socklen_t clientlen; /* byte size of client's address */
   struct sockaddr_in serveraddr; /* server's addr */
   struct sockaddr_in clientaddr; /* client addr */
-  struct hostent *hostp; /* client host info */
   char requestBuffer[TimeRequestPacketSize];
   char replyBuffer[TimeReplyPacketSize];
   int optval; /* flag value for setsockopt */
