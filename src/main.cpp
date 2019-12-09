@@ -16,7 +16,9 @@ struct __attribute__((__packed__)) TimeRequest
     char unused[4]; // 8 bytes padding, can have future use
     uint64_t clientCookie; // 8 bytes which user can set to whatever value, and will be returned in reply
 };
+
 const int TimeRequestPacketSize = sizeof(TimeRequest);
+
 
 struct __attribute__((__packed__)) TimeReply
 {
@@ -26,13 +28,14 @@ struct __attribute__((__packed__)) TimeReply
     uint64_t clientCookie; // the cookie which was sent in the request, copied to the reply for reference
     uint64_t timeSinceEphoc1970Ms; // number of ms since ephoc time - 1 Jan 1970 GMT
 };
+
 const int TimeReplyPacketSize = sizeof(TimeReply);
 
 /*
  * error - wrapper for perror
  */
-void error(char *msg) {
-  perror(msg);
+void error(const char *msg) {
+  // perror(msg);
   exit(1);
 }
 
@@ -45,7 +48,6 @@ int main(int argc, char **argv) {
   struct hostent *hostp; /* client host info */
   char requestBuffer[TimeRequestPacketSize];
   char replyBuffer[TimeReplyPacketSize];
-  char *hostaddrp; /* dotted decimal host addr string */
   int optval; /* flag value for setsockopt */
   int n; /* message byte size */
 
@@ -90,7 +92,7 @@ int main(int argc, char **argv) {
     error("ERROR on binding");
 
   /* 
-   * main loop: wait for a datagram, then echo it
+   * main loop: wait for a datagram, check validite and response with the time
    */
   clientlen = sizeof(clientaddr);
   while (1) {
@@ -103,24 +105,6 @@ int main(int argc, char **argv) {
 		 (struct sockaddr *) &clientaddr, &clientlen);
     if (n < 0)
       error("ERROR in recvfrom");
-
-    // /* 
-    //  * gethostbyaddr: determine who sent the datagram
-    //  */
-    // hostp = gethostbyaddr((const char *)&clientaddr.sin_addr.s_addr, 
-	// 		  sizeof(clientaddr.sin_addr.s_addr), AF_INET);
-    // if (hostp == NULL)
-    //   error("ERROR on gethostbyaddr");
-    // hostaddrp = inet_ntoa(clientaddr.sin_addr);
-    // if (hostaddrp == NULL)
-    //   error("ERROR on inet_ntoa\n");
-    // printf("server received datagram from %s (%s)\n", 
-	//    hostp->h_name, hostaddrp);
-    // printf("server received %d/%d bytes: %s\n", strlen(buf), n, buf);
-    
-    /* 
-     * sendto: echo the input back to the client 
-     */
 
     struct timeval tv;
     gettimeofday(&tv, NULL);
