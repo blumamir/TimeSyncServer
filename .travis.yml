@@ -1,3 +1,13 @@
 language: cpp
+
+before_script:
+  # create a build folder for the out-of-source build
+  - mkdir build
+  # switch to build directory
+  - cd build
+  # run cmake; here we assume that the project's
+  # top-level CMakeLists.txt is located at '..'
+  - cmake ..
+
 script:
   - make
