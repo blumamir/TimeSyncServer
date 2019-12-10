@@ -43,82 +43,135 @@ void error(const char *msg) {
   exit(1);
 }
 
-static void daemonize()
+static void becomeBackgroundProccess()
 {
-	pid_t pid = 0;
-	int fd;
-
-	// become background proccess
-	pid = fork();
-	if (pid < 0) // fork failed
+  pid_t pid = fork();
+  if (pid < 0) // fork failed
   { 
+    syslog(LOG_ERR, "daemonize: first fork failed");  
 		exit(EXIT_FAILURE);
 	}
 	if (pid > 0) // parent terminates
   { 
-		exit(EXIT_SUCCESS);
+    exit(EXIT_SUCCESS);
 	}
+}
 
-  // become leader of new session
+static void becomeLeaderOfNewSession()
+{
 	if (setsid() < 0) 
   {
+    syslog(LOG_ERR, "daemonize: setsid failed");  
 		exit(EXIT_FAILURE);
 	}
+}
 
-	// Ignore signal sent from child to parent process
+static void ignoreSigChldSignal()
+{
 	signal(SIGCHLD, SIG_IGN);
+}
 
-	// ensure we are not session leader with second fork
-	pid = fork();
+static void ensureNotSessionLeader()
+{
+	pid_t pid = fork();
 	if (pid < 0) // second fork failed
   {
+    syslog(LOG_ERR, "daemonize: second fork failed");  
 		exit(EXIT_FAILURE);
 	}
 	if (pid > 0) // parent terminates
   {
 		exit(EXIT_SUCCESS);
 	}
+}
 
-	// clear file mode creation mask
+// so if new files are created, they will have the correct permissions
+static void clearUmask()
+{
 	umask(0);
+}
 
-  // change to root directory
+// so we won't stuck if need to later unmount the FS which CWD is using
+static void changeWorkingDirectory()
+{
 	chdir("/");
+}
 
-  // close all file descriptors
+// they are not used in the daemon, and theredore should be cleaned
+// to prevent problems with later unmounts and resource leak.
+static void closeAllFileDescriptors()
+{
   int maxfd = sysconf(_SC_OPEN_MAX);
-  if (maxfd == -1) // limit is indeterminate...
+  if (maxfd < 0) // limit is indeterminate
   {
     maxfd = 8192; // so take a guess
   }
-  for (fd = 0; fd < maxfd; fd++)
+  for (int fd = 0; fd < maxfd; fd++)
   {
     close(fd);
   }
+}
 
-  // reopen standard fd's to /dev/null
-  close(STDIN_FILENO);
-
-  fd = open("/dev/null", O_RDWR);
+// make the standart file descriptors (0, 1, 2)
+// point to /dev/null, so if they are used by a library,
+// the operation will not fail or write to some other open fd
+static void redirectStdFdsToDevNull()
+{
+  int fd = open("/dev/null", O_RDWR);
   if (fd != STDIN_FILENO) // 'fd' should be 0
   {
+    syslog(LOG_ERR, "daemonize: failed to open /dev/null");  
     exit(EXIT_FAILURE);
   }
   if (dup2(STDIN_FILENO, STDOUT_FILENO) != STDOUT_FILENO)
   {
+    syslog(LOG_ERR, "daemonize: failed to set /dev/null to STDOUT");  
     exit(EXIT_FAILURE);
   }
   if (dup2(STDIN_FILENO, STDERR_FILENO) != STDERR_FILENO)
   {
+    syslog(LOG_ERR, "daemonize: failed to open /dev/null to STDERR");  
     exit(EXIT_FAILURE);
   }
-  
 }
 
+static void lockPidFile()
+{
+  const char *lockFilePath = "/var/run/tssd.pid";
+  char str[256];
+  int pidFd = open(lockFilePath, O_RDWR|O_CREAT, 0640);
+  if (pidFd < 0) {
+    syslog(LOG_ERR, "daemonize: cannot create lock file at '%s'", lockFilePath);
+    exit(EXIT_FAILURE);
+  }
+  if (lockf(pidFd, F_TLOCK, 0) < 0) {
+    /* Can't lock file */
+    syslog(LOG_ERR, "daemonize: cannot lock the lock file at '%s'", lockFilePath);
+    exit(EXIT_FAILURE);
+  }
+  /* Get current PID */
+  sprintf(str, "%d\n", getpid());
+  /* Write PID to lockfile */
+  write(pidFd, str, strlen(str));  
+}
 
-int main(int argc, char **argv) {
+static void daemonize()
+{
+	becomeBackgroundProccess();
+  becomeLeaderOfNewSession();
+  ignoreSigChldSignal();
+  ensureNotSessionLeader();
+  clearUmask();
+  changeWorkingDirectory();
+  closeAllFileDescriptors();
+  redirectStdFdsToDevNull();
+  lockPidFile();
+}
+
+int main(int argc, char **argv) 
+{
   int sockfd; /* socket */
-  int portno; /* port to listen on */
+  int portno = 12321; /* port to listen on */
   socklen_t clientlen; /* byte size of client's address */
   struct sockaddr_in serveraddr; /* server's addr */
   struct sockaddr_in clientaddr; /* client addr */
@@ -132,11 +185,15 @@ int main(int argc, char **argv) {
   /* 
    * check command line arguments 
    */
-  if (argc != 2) {
-    fprintf(stderr, "usage: %s <port>\n", argv[0]);
+  if (argc == 2) 
+  {
+    portno = atoi(argv[1]);
+  }
+
+  if(argc > 2)
+  {
     exit(1);
   }
-  portno = atoi(argv[1]);
 
   daemonize();
 
@@ -202,6 +259,6 @@ int main(int argc, char **argv) {
       error("ERROR in sendto");
   }
 
-	syslog(LOG_INFO, "Stopped %s", appName);
+	syslog(LOG_INFO, "stopped %s", appName);
 
 }
