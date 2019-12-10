@@ -1,9 +1,13 @@
+#include <signal.h>
 #include <stdio.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
 #include <netdb.h>
+#include <fcntl.h>
+#include <syslog.h>
 #include <sys/types.h> 
+#include <sys/stat.h>
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <netinet/in.h>
@@ -39,6 +43,79 @@ void error(const char *msg) {
   exit(1);
 }
 
+static void daemonize()
+{
+	pid_t pid = 0;
+	int fd;
+
+	// become background proccess
+	pid = fork();
+	if (pid < 0) // fork failed
+  { 
+		exit(EXIT_FAILURE);
+	}
+	if (pid > 0) // parent terminates
+  { 
+		exit(EXIT_SUCCESS);
+	}
+
+  // become leader of new session
+	if (setsid() < 0) 
+  {
+		exit(EXIT_FAILURE);
+	}
+
+	// Ignore signal sent from child to parent process
+	signal(SIGCHLD, SIG_IGN);
+
+	// ensure we are not session leader with second fork
+	pid = fork();
+	if (pid < 0) // second fork failed
+  {
+		exit(EXIT_FAILURE);
+	}
+	if (pid > 0) // parent terminates
+  {
+		exit(EXIT_SUCCESS);
+	}
+
+	// clear file mode creation mask
+	umask(0);
+
+  // change to root directory
+	chdir("/");
+
+  // close all file descriptors
+  int maxfd = sysconf(_SC_OPEN_MAX);
+  if (maxfd == -1) // limit is indeterminate...
+  {
+    maxfd = 8192; // so take a guess
+  }
+  for (fd = 0; fd < maxfd; fd++)
+  {
+    close(fd);
+  }
+
+  // reopen standard fd's to /dev/null
+  close(STDIN_FILENO);
+
+  fd = open("/dev/null", O_RDWR);
+  if (fd != STDIN_FILENO) // 'fd' should be 0
+  {
+    exit(EXIT_FAILURE);
+  }
+  if (dup2(STDIN_FILENO, STDOUT_FILENO) != STDOUT_FILENO)
+  {
+    exit(EXIT_FAILURE);
+  }
+  if (dup2(STDIN_FILENO, STDERR_FILENO) != STDERR_FILENO)
+  {
+    exit(EXIT_FAILURE);
+  }
+  
+}
+
+
 int main(int argc, char **argv) {
   int sockfd; /* socket */
   int portno; /* port to listen on */
@@ -50,6 +127,8 @@ int main(int argc, char **argv) {
   int optval; /* flag value for setsockopt */
   int n; /* message byte size */
 
+  const char *appName = argv[0];
+
   /* 
    * check command line arguments 
    */
@@ -58,6 +137,12 @@ int main(int argc, char **argv) {
     exit(1);
   }
   portno = atoi(argv[1]);
+
+  daemonize();
+
+	/* Open system log and write message to it */
+	openlog(argv[0], LOG_PID|LOG_CONS, LOG_DAEMON);
+	syslog(LOG_INFO, "Started time sync server '%s'", appName);  
 
   /* 
    * socket: create the parent socket 
@@ -116,4 +201,7 @@ int main(int argc, char **argv) {
     if (n < 0) 
       error("ERROR in sendto");
   }
+
+	syslog(LOG_INFO, "Stopped %s", appName);
+
 }
