@@ -1,5 +1,6 @@
 # TimeSyncServer
 Ntp like server, used to synchronize clients time fast and precisely
+[![Build Status](https://travis-ci.com/BlumAmir/TimeSyncServer.svg?branch=master)](https://travis-ci.com/BlumAmir/TimeSyncServer)
 
 # build
 To build the project from sources using CMake
