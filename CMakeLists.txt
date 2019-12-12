@@ -1,5 +1,9 @@
+
 cmake_minimum_required(VERSION 3.10.2)
 project (tssd)
+
+include_directories(thirdparty)
+
 add_executable(tssd src/main.cpp)
 
 # user configuration with default value for install

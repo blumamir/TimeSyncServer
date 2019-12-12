@@ -13,6 +13,8 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
+#include <cxxopts/cxxopts.hpp>
+
 struct __attribute__((__packed__)) TimeRequest
 {
     char protocol[3]; // Protocol name (TSP)
@@ -168,8 +170,45 @@ static void daemonize()
   lockPidFile();
 }
 
+static void parseOptions(int argc, char **argv, cxxopts::Options &options)
+{
+  const char *appName = argv[0];
+
+  options.add_options()
+    ("h, help", "print help")
+    ;
+
+  try
+  {
+    cxxopts::ParseResult optsResult = options.parse(argc, argv);
+    if(optsResult.count("help") > 0)
+    {
+      std::cout << options.help() << std::endl;
+      exit(EXIT_SUCCESS);
+    }
+  }
+  catch(const cxxopts::OptionException &e)
+  {
+    std::cerr << appName << ": " << e.what() << std::endl;
+    std::cerr << "Try '" << appName << " --help' for more information." << std::endl;
+    exit(EXIT_FAILURE);
+  }
+  catch(const std::exception& e)
+  {
+    std::cerr << appName << ": " << e.what() << std::endl;
+    exit(EXIT_FAILURE);
+  }
+}
+
 int main(int argc, char **argv) 
 {
+  const char *appName = argv[0];
+
+  cxxopts::Options options(appName, "Time Sync Server Daemon: ntp like server, used to synchronize clients time fast and precisely");
+  options.add_options()
+    ;
+  parseOptions(argc, argv, options);
+  
   int sockfd; /* socket */
   int portno = 12321; /* port to listen on */
   socklen_t clientlen; /* byte size of client's address */
@@ -179,8 +218,6 @@ int main(int argc, char **argv)
   char replyBuffer[TimeReplyPacketSize];
   int optval; /* flag value for setsockopt */
   int n; /* message byte size */
-
-  const char *appName = argv[0];
 
   /* 
    * check command line arguments 
