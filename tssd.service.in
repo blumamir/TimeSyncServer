@@ -4,7 +4,8 @@ Description=Time Sync Server
 [Service]
 Type=forking
 PIDFile=${SYSTEMD_SERVICES_PID_FILE}
-ExecStart=${SERVICE_EXE_NAME}
+ExecStart=${SERVICE_EXE_NAME} \
+    --pidfile ${SYSTEMD_SERVICES_PID_FILE}
 User=root
 
 [Install]

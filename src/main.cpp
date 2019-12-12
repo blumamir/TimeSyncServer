@@ -137,18 +137,17 @@ static void redirectStdFdsToDevNull()
   }
 }
 
-static void lockPidFile()
+static void lockPidFile(const char *pidfile)
 {
-  const char *lockFilePath = "/var/run/tssd.pid";
   char str[256];
-  int pidFd = open(lockFilePath, O_RDWR|O_CREAT, 0640);
+  int pidFd = open(pidfile, O_RDWR|O_CREAT, 0640);
   if (pidFd < 0) {
-    syslog(LOG_ERR, "daemonize: cannot create lock file at '%s'", lockFilePath);
+    syslog(LOG_ERR, "daemonize: cannot create lock file at '%s'", pidfile);
     exit(EXIT_FAILURE);
   }
   if (lockf(pidFd, F_TLOCK, 0) < 0) {
     /* Can't lock file */
-    syslog(LOG_ERR, "daemonize: cannot lock the lock file at '%s'", lockFilePath);
+    syslog(LOG_ERR, "daemonize: cannot lock the lock file at '%s'", pidfile);
     exit(EXIT_FAILURE);
   }
   /* Get current PID */
@@ -157,7 +156,7 @@ static void lockPidFile()
   write(pidFd, str, strlen(str));  
 }
 
-static void daemonize()
+static void daemonize(const char *pidfile)
 {
 	becomeBackgroundProccess();
   becomeLeaderOfNewSession();
@@ -167,10 +166,10 @@ static void daemonize()
   changeWorkingDirectory();
   closeAllFileDescriptors();
   redirectStdFdsToDevNull();
-  lockPidFile();
+  lockPidFile(pidfile);
 }
 
-static void parseOptions(int argc, char **argv, cxxopts::Options &options)
+static cxxopts::ParseResult parseOptions(int argc, char **argv, cxxopts::Options &options)
 {
   const char *appName = argv[0];
 
@@ -181,11 +180,14 @@ static void parseOptions(int argc, char **argv, cxxopts::Options &options)
   try
   {
     cxxopts::ParseResult optsResult = options.parse(argc, argv);
+
     if(optsResult.count("help") > 0)
     {
       std::cout << options.help() << std::endl;
       exit(EXIT_SUCCESS);
     }
+
+    return optsResult;
   }
   catch(const cxxopts::OptionException &e)
   {
@@ -206,8 +208,16 @@ int main(int argc, char **argv)
 
   cxxopts::Options options(appName, "Time Sync Server Daemon: ntp like server, used to synchronize clients time fast and precisely");
   options.add_options()
+    ("p, pidfile", "path referring to the systemd PID file of the service", cxxopts::value<std::string>()->default_value("/var/run/tssd.pid"))
     ;
-  parseOptions(argc, argv, options);
+  cxxopts::ParseResult parseResult = parseOptions(argc, argv, options);
+
+  std::string pidfile;
+  if(parseResult.count("pidfile") > 0)
+  {
+    pidfile = parseResult["pidfile"].as<std::string>();
+  }
+
   
   int sockfd; /* socket */
   int portno = 12321; /* port to listen on */
@@ -219,20 +229,7 @@ int main(int argc, char **argv)
   int optval; /* flag value for setsockopt */
   int n; /* message byte size */
 
-  /* 
-   * check command line arguments 
-   */
-  if (argc == 2) 
-  {
-    portno = atoi(argv[1]);
-  }
-
-  if(argc > 2)
-  {
-    exit(1);
-  }
-
-  daemonize();
+  daemonize(pidfile.c_str());
 
 	/* Open system log and write message to it */
 	openlog(argv[0], LOG_PID|LOG_CONS, LOG_DAEMON);
