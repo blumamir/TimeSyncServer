@@ -2,6 +2,8 @@
 cmake_minimum_required(VERSION 3.10.2)
 project (tssd)
 
+set (CMAKE_CXX_STANDARD 11)
+
 include_directories(thirdparty)
 
 add_executable(tssd src/main.cpp)
