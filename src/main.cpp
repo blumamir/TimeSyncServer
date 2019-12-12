@@ -37,6 +37,19 @@ struct __attribute__((__packed__)) TimeReply
 
 const int TimeReplyPacketSize = sizeof(TimeReply);
 
+
+static volatile sig_atomic_t gotSigTerm = 0;
+
+void handleSignal(int sig)
+{
+  syslog(LOG_INFO, "Singal handler %d", sig);  
+  if (sig == SIGTERM)
+  {
+    gotSigTerm = 1;  
+    signal(SIGTERM, SIG_DFL);
+  }
+}
+
 /*
  * error - wrapper for perror
  */
@@ -219,7 +232,7 @@ int main(int argc, char **argv)
   }
 
   
-  int sockfd; /* socket */
+  int sockfd = -1;
   int portno = 12321; /* port to listen on */
   socklen_t clientlen; /* byte size of client's address */
   struct sockaddr_in serveraddr; /* server's addr */
@@ -233,7 +246,9 @@ int main(int argc, char **argv)
 
 	/* Open system log and write message to it */
 	openlog(argv[0], LOG_PID|LOG_CONS, LOG_DAEMON);
-	syslog(LOG_INFO, "Started time sync server '%s'", appName);  
+	syslog(LOG_INFO, "Started time sync server daemon '%s'", appName);  
+
+  signal(SIGTERM, handleSignal);
 
   /* 
    * socket: create the parent socket 
@@ -248,8 +263,19 @@ int main(int argc, char **argv)
    * Eliminates "ERROR on binding: Address already in use" error. 
    */
   optval = 1;
-  setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, 
-	     (const void *)&optval , sizeof(int));
+  setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, (const void *)&optval , sizeof(int));
+
+  /*
+  Set timeout on the socket. it is good for 2 reasons:
+  1. if we get a signal to terminate the service, this will give us a chance to 
+    observe the flag change and exit the loop
+  2. the code (which should react fast to time request) will be "hot" in cache,
+    thus, decreasing the response time
+  */
+  struct timeval tvForSockRecv;
+  tvForSockRecv.tv_sec = 0;
+  tvForSockRecv.tv_usec = 1000 * 50; /* value is microseconds, so timeout set to 50 ms */
+  setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tvForSockRecv, sizeof(tvForSockRecv));
 
   /*
    * build the server's Internet address
@@ -270,29 +296,51 @@ int main(int argc, char **argv)
    * main loop: wait for a datagram, check validite and response with the time
    */
   clientlen = sizeof(clientaddr);
-  while (1) {
-
-    /*
-     * recvfrom: receive a UDP datagram from a client
-     */
-    bzero(requestBuffer, TimeRequestPacketSize);
-    n = recvfrom(sockfd, requestBuffer, TimeRequestPacketSize, 0,
-		 (struct sockaddr *) &clientaddr, &clientlen);
+  while (gotSigTerm == 0) 
+  {
+    n = recvfrom(sockfd, requestBuffer, TimeRequestPacketSize, 0, (struct sockaddr *) &clientaddr, &clientlen);
     if (n < 0)
-      error("ERROR in recvfrom");
+    {
+      if(errno == EAGAIN || errno == EINTR) // timeout of the recv operation
+      {
+        continue;
+      }
+      else
+      {
+        syslog(LOG_ERR, "recv from socket failed because: '%m'");
+        exit(EXIT_FAILURE);
+      }
+    }
 
-    struct timeval tv;
-    gettimeofday(&tv, NULL);
+    if(n < TimeRequestPacketSize)
+    {
+      // packet is too short - just ignore it (todo: write to log)
+      continue;
+    }
+
+    // check header of packet - to make sure it is a TSP (time sync protocol) packet
+    if(*(requestBuffer + 0) != 'T' ||
+        *(requestBuffer + 1) != 'S' ||
+        *(requestBuffer + 2) != 'P')
+    {
+      // not an TSP message (todo: write to log)
+      continue;
+    }
+
+    struct timeval tvCurrTime;
+    gettimeofday(&tvCurrTime, NULL);
     // convert sec to ms and usec to ms
-    uint64_t curr_time_ms_since_epoch = ((uint64_t)(tv.tv_sec)) * 1000 + ((uint64_t)(tv.tv_usec)) / 1000;
+    uint64_t currTimeMsSinceEpoch = ((uint64_t)(tvCurrTime.tv_sec)) * 1000 + ((uint64_t)(tvCurrTime.tv_usec)) / 1000;
 
     memcpy(replyBuffer, requestBuffer, TimeRequestPacketSize);
-    ((TimeReply *)replyBuffer)->timeSinceEphoc1970Ms = curr_time_ms_since_epoch;
+    ((TimeReply *)replyBuffer)->timeSinceEphoc1970Ms = currTimeMsSinceEpoch;
     n = sendto(sockfd, replyBuffer, TimeReplyPacketSize, MSG_CONFIRM, (struct sockaddr *) &clientaddr, clientlen);
     if (n < 0) 
       error("ERROR in sendto");
   }
 
-	syslog(LOG_INFO, "stopped %s", appName);
+  close(sockfd);
+	syslog(LOG_INFO, "Stopped time sync server daemon '%s'", appName);
 
+  return EXIT_SUCCESS;
 }
