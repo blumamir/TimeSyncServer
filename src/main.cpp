@@ -222,6 +222,7 @@ int main(int argc, char **argv)
   cxxopts::Options options(appName, "Time Sync Server Daemon: ntp like server, used to synchronize clients time fast and precisely");
   options.add_options()
     ("p, pidfile", "path referring to the systemd PID file of the service", cxxopts::value<std::string>()->default_value("/var/run/tssd.pid"))
+    ("dont_d", "don't run as deamon", cxxopts::value<bool>())
     ;
   cxxopts::ParseResult parseResult = parseOptions(argc, argv, options);
 
@@ -242,7 +243,10 @@ int main(int argc, char **argv)
   int optval; /* flag value for setsockopt */
   int n; /* message byte size */
 
-  daemonize(pidfile.c_str());
+  if(!parseResult["dont_d"].as<bool>())
+  {
+    daemonize(pidfile.c_str());
+  }
 
 	/* Open system log and write message to it */
 	openlog(argv[0], LOG_PID|LOG_CONS, LOG_DAEMON);
