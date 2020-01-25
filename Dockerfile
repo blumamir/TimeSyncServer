@@ -1,9 +1,23 @@
-FROM madduci/docker-cpp-env:latest AS build
-WORKDIR /src
-COPY . ./
-RUN cmake . && make
+FROM alpine:3.8 AS build
 
-FROM alpine
-RUN apk --update add libgcc libstdc++
-COPY --from=build /src/tssd ./
-CMD ./tssd --dont_d
+COPY . /src
+
+RUN set -x && \
+    apk add \
+        build-base \
+        cmake && \
+    cd src && \
+    rm -rf build && mkdir -p build && cd build && \
+    cmake .. && make
+
+
+FROM alpine:3.8
+
+WORKDIR /opt/tssd
+
+COPY --from=build /src/build/tssd ./
+
+RUN set -x && \
+    apk add libstdc++
+
+CMD ["./tssd", "--dont_d"]
