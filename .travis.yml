@@ -1,6 +1,12 @@
 language: cpp
 
+services:
+  - docker
+
 before_script:
+
+  - docker build -t blumamir/time-sync-server .
+
   # create a build folder for the out-of-source build
   - mkdir build
   # switch to build directory
