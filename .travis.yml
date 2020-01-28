@@ -17,3 +17,9 @@ before_script:
 
 script:
   - make
+
+deploy:
+  provider: script
+  script: bash docker_push
+  on:
+    branch: master
