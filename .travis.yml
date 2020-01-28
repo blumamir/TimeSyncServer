@@ -19,8 +19,3 @@ before_script:
 script:
   - make -C build
 
-deploy:
-  provider: script
-  script: echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin && docker push blumamir/time-sync-server
-  on:
-    branch: master
