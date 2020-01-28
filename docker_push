@@ -1,5 +1,0 @@
-#!/bin/bash
-set -x
-echo "$DOCKER_USERNAME"
-#echo "$DOCKER_PASSWORD" | docker login --username "$DOCKER_USERNAME" --password-stdin
-#docker push blumamir/time-sync-server
