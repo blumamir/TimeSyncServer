@@ -1,11 +1,13 @@
 FROM alpine:3.8 AS build
 
-COPY . /src
-
 RUN set -x && \
     apk add \
         build-base \
-        cmake && \
+        cmake
+
+COPY . /src
+
+RUN set -x && \
     cd src && \
     rm -rf build && mkdir -p build && cd build && \
     cmake .. && make
